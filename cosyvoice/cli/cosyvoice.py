@@ -44,9 +44,11 @@ class CosyVoice:
                                           '{}/spk2info.pt'.format(model_dir),
                                           configs['allowed_special'])
         self.sample_rate = configs['sample_rate']
+
         if torch.cuda.is_available() is False and (load_jit is True or load_trt is True or fp16 is True):
             load_jit, load_trt, fp16 = False, False, False
             logging.warning('no cuda device, set load_jit/load_trt/fp16 to False')
+
         self.model = CosyVoiceModel(configs['llm'], configs['flow'], configs['hift'], fp16)
         self.model.load('{}/llm.pt'.format(model_dir),
                         '{}/flow.pt'.format(model_dir),
@@ -188,7 +190,7 @@ class CosyVoice2(CosyVoice):
 
 class CosyVoice3(CosyVoice2):
 
-    def __init__(self, model_dir, load_trt=False, load_vllm=False, fp16=False, trt_concurrent=1):
+    def __init__(self, model_dir, manual_load=False, load_trt=False, load_vllm=False, fp16=False, trt_concurrent=1):
         self.model_dir = model_dir
         self.fp16 = fp16
         if not os.path.exists(model_dir):
@@ -206,13 +208,25 @@ class CosyVoice3(CosyVoice2):
                                           '{}/spk2info.pt'.format(model_dir),
                                           configs['allowed_special'])
         self.sample_rate = configs['sample_rate']
+        
+        #check cuda device and set load_jit/load_trt/fp16 to False if no cuda device
         if torch.cuda.is_available() is False and (load_trt is True or fp16 is True):
             load_trt, fp16 = False, False
             logging.warning('no cuda device, set load_trt/fp16 to False')
-        self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16)
-        self.model.load('{}/llm.pt'.format(model_dir),
-                        '{}/flow.pt'.format(model_dir),
-                        '{}/hift.pt'.format(model_dir))
+
+        if(not manual_load):
+            self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16)
+            self.model.load('{}/llm.pt'.format(model_dir),
+                            '{}/flow.pt'.format(model_dir),
+                            '{}/hift.pt'.format(model_dir))
+        else:
+            print("manual load is in development")
+            self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16, manual_load=True)
+            self.model.load('{}/llm.pt'.format(model_dir),
+                            '{}/flow.pt'.format(model_dir),
+                            '{}/hift.pt'.format(model_dir))
+
+        #ignore
         if load_vllm:
             self.model.load_vllm('{}/vllm'.format(model_dir))
         if load_trt:
