@@ -1,3 +1,6 @@
+# Note:
+- this will make webui.py not work
+- this repo only use for Kaggle and Colab
 # **TUTORIAL VIA KAGGLE**:
 https://www.kaggle.com/code/handsomelong/run-cosyvoice3-kagglecolab
 
