@@ -137,6 +137,29 @@ class CosyVoice:
             yield model_output
             start_time = time.time()
 
+    def loadLLM(self):
+        self.model.loadLLM('{}/llm.pt'.format(self.model_dir))
+        logging.info('LLM loaded successfully!')
+
+    def loadFlow(self):
+        self.model.loadFlow('{}/flow.pt'.format(self.model_dir))
+        logging.info('Flow loaded successfully!')
+
+    def loadHIFT(self):
+        self.model.loadHIFT('{}/hift.pt'.format(self.model_dir))
+        logging.info('HIFT loaded successfully!')
+
+    def unloadLLM(self):
+        self.model.unloadLLM()
+        logging.info('LLM unloaded successfully!')
+
+    def unloadFlow(self):
+        self.model.unloadFlow()
+        logging.info('Flow unloaded successfully!')
+
+    def unloadHIFT(self):
+        self.model.unloadHIFT()
+        logging.info('HIFT unloaded successfully!')
 
 class CosyVoice2(CosyVoice):
 

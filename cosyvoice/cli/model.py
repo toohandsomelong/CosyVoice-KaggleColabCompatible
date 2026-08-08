@@ -61,6 +61,10 @@ class CosyVoiceModel:
         self.flow_cache_dict = {}
         self.hift_cache_dict = {}
         self.silent_tokens = []
+        #load check
+        self.isLLMLoaded = False
+        self.isFlowLoaded = False
+        self.isHIFTLoaded = False
 
     def vram(self, msg):
         alloc = torch.cuda.memory_allocated() / 1024**2
@@ -70,23 +74,48 @@ class CosyVoiceModel:
     def load(self, llm_model, flow_model, hift_model):
         self.vram("Start")
 
+        self.loadLLM(llm_model)
+        self.loadFlow(flow_model)
+        self.loadHIFT(hift_model)
+
+    def loadLLM(self, llm_model):
         self.llm.load_state_dict(torch.load(llm_model, map_location=self.device, weights_only=True), strict=True)
         self.vram("LLM state_dict loaded")
         self.llm.to(self.device).eval()
         self.vram("LLM moved to GPU")
+        self.isLLMLoaded = True
 
+    def loadFlow(self, flow_model):
         self.flow.load_state_dict(torch.load(flow_model, map_location=self.device, weights_only=True), strict=True)
         self.vram("Flow state_dict loaded")
         self.flow.to(self.device).eval()
         self.vram("Flow moved to GPU")
+        self.isFlowLoaded = True
 
+    def loadHIFT(self, hift_model):
         # in case hift_model is a hifigan model
         hift_state_dict = {k.replace('generator.', ''): v for k, v in torch.load(hift_model, map_location=self.device, weights_only=True).items()}
         self.hift.load_state_dict(hift_state_dict, strict=True)
         self.vram("HIFT state_dict loaded")
         self.hift.to(self.device).eval()
         self.vram("HIFT moved to GPU")
+        self.isHIFTLoaded = True
 
+    def unloadLLM(self):
+        del self.llm
+        self.vram("LLM unloaded")
+        self.isLLMLoaded = False
+
+    def unloadFlow(self):
+        del self.flow
+        self.vram("Flow unloaded")
+        self.isFlowLoaded = False
+
+    def unloadHIFT(self):
+        del self.hift
+        self.vram("HIFT unloaded")
+        self.isHIFTLoaded = False
+    
     def load_jit(self, llm_text_encoder_model, llm_llm_model, flow_encoder_model):
         llm_text_encoder = torch.jit.load(llm_text_encoder_model, map_location=self.device)
         self.llm.text_encoder = llm_text_encoder
