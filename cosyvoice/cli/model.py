@@ -18,6 +18,7 @@ import torch
 import numpy as np
 import threading
 import time
+import gc
 from torch.nn import functional as F
 from contextlib import nullcontext
 import uuid
@@ -61,10 +62,6 @@ class CosyVoiceModel:
         self.flow_cache_dict = {}
         self.hift_cache_dict = {}
         self.silent_tokens = []
-        #load check
-        self.isLLMLoaded = False
-        self.isFlowLoaded = False
-        self.isHIFTLoaded = False
 
     def vram(self, msg):
         alloc = torch.cuda.memory_allocated() / 1024**2
@@ -82,15 +79,13 @@ class CosyVoiceModel:
         self.llm.load_state_dict(torch.load(llm_model, map_location=self.device, weights_only=True), strict=True)
         self.vram("LLM state_dict loaded")
         self.llm.to(self.device).eval()
-        self.vram("LLM moved to GPU")
-        self.isLLMLoaded = True
+        self.vram(f"LLM moved to {self.device}")
 
     def loadFlow(self, flow_model):
         self.flow.load_state_dict(torch.load(flow_model, map_location=self.device, weights_only=True), strict=True)
         self.vram("Flow state_dict loaded")
         self.flow.to(self.device).eval()
-        self.vram("Flow moved to GPU")
-        self.isFlowLoaded = True
+        self.vram(f"Flow moved to {self.device}")
 
     def loadHIFT(self, hift_model):
         # in case hift_model is a hifigan model
@@ -98,24 +93,42 @@ class CosyVoiceModel:
         self.hift.load_state_dict(hift_state_dict, strict=True)
         self.vram("HIFT state_dict loaded")
         self.hift.to(self.device).eval()
-        self.vram("HIFT moved to GPU")
+        self.vram(f"HIFT moved to {self.device}")
         self.isHIFTLoaded = True
 
-    def unloadLLM(self):
-        del self.llm
-        self.vram("LLM unloaded")
-        self.isLLMLoaded = False
+    def clearCache(self):
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+            torch.cuda.current_stream().synchronize()
 
-    def unloadFlow(self):
-        del self.flow
-        self.vram("Flow unloaded")
-        self.isFlowLoaded = False
+        self.vram("Cache cleared")
 
-    def unloadHIFT(self):
-        del self.hift
-        self.vram("HIFT unloaded")
-        self.isHIFTLoaded = False
-    
+    def llmToDevice(self, cpu = False):
+        device = "cuda"
+        if(cpu):
+          device = "cpu"
+        self.llm.to(device)
+        self.vram(f"LLM moved to {device}")
+        self.clearCache()
+
+    def flowToDevice(self, cpu = False):
+        device = "cuda"
+        if(cpu):
+          device = "cpu"
+        self.flow.to(device)
+        self.vram(f"Flow moved to {device}")
+        self.clearCache()
+
+    def hiftToDevice(self, cpu = False):
+        device = "cuda"
+        if(cpu):
+          device = "cpu"
+        self.hift.to(device)
+        self.vram(f"HIFT moved to {device}")
+        self.clearCache()
+
     def load_jit(self, llm_text_encoder_model, llm_llm_model, flow_encoder_model):
         llm_text_encoder = torch.jit.load(llm_text_encoder_model, map_location=self.device)
         self.llm.text_encoder = llm_text_encoder
@@ -444,14 +457,12 @@ class CosyVoice3Model(CosyVoice2Model):
                  llm: torch.nn.Module,
                  flow: torch.nn.Module,
                  hift: torch.nn.Module,
-                 fp16: bool = False,
-                 manual_load: bool = False):
+                 fp16: bool = False):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.llm = llm
         self.flow = flow
         self.hift = hift
         self.fp16 = fp16
-        self.manual_load = manual_load
         # NOTE must matching training static_chunk_size
         self.token_hop_len = 25
         # NOTE increase token_hop_len incrementally to avoid duplicate inference

@@ -149,17 +149,17 @@ class CosyVoice:
         self.model.loadHIFT('{}/hift.pt'.format(self.model_dir))
         logging.info('HIFT loaded successfully!')
 
-    def unloadLLM(self):
-        self.model.unloadLLM()
-        logging.info('LLM unloaded successfully!')
+    def llmToDevice(self, cpu=False):
+        self.model.llmToDevice(cpu=cpu)
+        logging.info('LLM moved to {} successfully!'.format('cpu' if cpu else 'cuda'))
 
-    def unloadFlow(self):
-        self.model.unloadFlow()
-        logging.info('Flow unloaded successfully!')
+    def flowToDevice(self, cpu=False):
+        self.model.flowToDevice(cpu=cpu)
+        logging.info('Flow moved to {} successfully!'.format('cpu' if cpu else 'cuda'))
 
-    def unloadHIFT(self):
-        self.model.unloadHIFT()
-        logging.info('HIFT unloaded successfully!')
+    def hiftToDevice(self, cpu=False):
+        self.model.hiftToDevice(cpu=cpu)
+        logging.info('HIFT moved to {} successfully!'.format('cpu' if cpu else 'cuda'))
 
 class CosyVoice2(CosyVoice):
 
@@ -243,11 +243,8 @@ class CosyVoice3(CosyVoice2):
                             '{}/flow.pt'.format(model_dir),
                             '{}/hift.pt'.format(model_dir))
         else:
-            print("manual load is in development")
-            self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16, manual_load=True)
-            self.model.load('{}/llm.pt'.format(model_dir),
-                            '{}/flow.pt'.format(model_dir),
-                            '{}/hift.pt'.format(model_dir))
+            print("Manual load is enabled, please load the model manually using loadLLM, loadFlow and loadHIFT methods.")
+            self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16)
 
         #ignore
         if load_vllm:
