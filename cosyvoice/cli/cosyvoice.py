@@ -11,6 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import gc
+import sys
+import ctypes
 import os
 import time
 from typing import Generator
@@ -18,6 +21,7 @@ from tqdm import tqdm
 from hyperpyyaml import load_hyperpyyaml
 from modelscope import snapshot_download
 import torch
+import psutil
 from cosyvoice.cli.frontend import CosyVoiceFrontEnd
 from cosyvoice.cli.model import CosyVoiceModel, CosyVoice2Model, CosyVoice3Model
 from cosyvoice.utils.file_utils import logging
@@ -213,17 +217,22 @@ class CosyVoice2(CosyVoice):
 
 class CosyVoice3(CosyVoice2):
 
-    def __init__(self, model_dir, manual_load=False, load_trt=False, load_vllm=False, fp16=False, trt_concurrent=1):
+    def __init__(self, model_dir, manual_load=False, load_trt=False, load_vllm=False, fp16=False, trt_concurrent=1, debug = False):
+        self.debug = debug
         self.model_dir = model_dir
         self.fp16 = fp16
+        self.print_ram("1")
         if not os.path.exists(model_dir):
             model_dir = snapshot_download(model_dir)
+        self.print_ram("2")
         hyper_yaml_path = '{}/cosyvoice3.yaml'.format(model_dir)
         if not os.path.exists(hyper_yaml_path):
             raise ValueError('{} not found!'.format(hyper_yaml_path))
+        self.print_ram("3")
         with open(hyper_yaml_path, 'r') as f:
             configs = load_hyperpyyaml(f, overrides={'qwen_pretrain_path': os.path.join(model_dir, 'CosyVoice-BlankEN')})
         assert get_model_type(configs) == CosyVoice3Model, 'do not use {} for CosyVoice3 initialization!'.format(model_dir)
+        self.print_ram("4")
         self.frontend = CosyVoiceFrontEnd(configs['get_tokenizer'],
                                           configs['feat_extractor'],
                                           '{}/campplus.onnx'.format(model_dir),
@@ -238,13 +247,13 @@ class CosyVoice3(CosyVoice2):
             logging.warning('no cuda device, set load_trt/fp16 to False')
 
         if(not manual_load):
-            self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16)
+            self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16, debug=self.debug)
             self.model.load('{}/llm.pt'.format(model_dir),
                             '{}/flow.pt'.format(model_dir),
                             '{}/hift.pt'.format(model_dir))
         else:
             print("Manual load is enabled, please load the model manually using loadLLM, loadFlow and loadHIFT methods.")
-            self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16)
+            self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16, debug=self.debug)
 
         #ignore
         if load_vllm:
@@ -257,6 +266,34 @@ class CosyVoice3(CosyVoice2):
                                 trt_concurrent,
                                 self.fp16)
         del configs
+    
+    def print_ram(self, tag):
+        if(not self.debug):
+            return
+        process = psutil.Process(os.getpid())
+        ram = process.memory_info().rss / 1024**3
+        print(f"[RAM] {tag}: {ram:.3f} GB")
+
+    def free_ram(self):
+        gc.collect()
+        if sys.platform.startswith('linux'):
+            try:
+                ctypes.CDLL('libc.so.6').malloc_trim(0)
+            except Exception:
+                print("Failed to free RAM on Linux")
+                pass
+        elif sys.platform == 'win32':
+            try:
+                ctypes.cdll.msvcrt._heapmin()
+            except Exception:
+                print("Failed to free RAM on Windows")
+                pass
+            try:
+                ctypes.windll.kernel32.SetProcessWorkingSetSize(-1, -1)
+            except Exception:
+                print("Failed to free RAM on Windows")
+                pass
+
 
 
 def AutoModel(**kwargs):

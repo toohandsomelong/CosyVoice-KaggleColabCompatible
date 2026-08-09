@@ -13,12 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+import sys
 from typing import Generator
 import torch
 import numpy as np
 import threading
 import time
 import gc
+import ctypes
 from torch.nn import functional as F
 from contextlib import nullcontext
 import uuid
@@ -33,12 +35,15 @@ class CosyVoiceModel:
                  llm: torch.nn.Module,
                  flow: torch.nn.Module,
                  hift: torch.nn.Module,
-                 fp16: bool = False):
+                 fp16: bool = False,
+                 debug: bool = False
+                 ):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.llm = llm
         self.flow = flow
         self.hift = hift
         self.fp16 = fp16
+        self.debug = debug
         self.token_min_hop_len = 2 * self.flow.input_frame_rate
         self.token_max_hop_len = 4 * self.flow.input_frame_rate
         self.token_overlap_len = 20
@@ -64,9 +69,31 @@ class CosyVoiceModel:
         self.silent_tokens = []
 
     def vram(self, msg):
+        if (not self.debug):
+            return
         alloc = torch.cuda.memory_allocated() / 1024**2
         reserved = torch.cuda.memory_reserved() / 1024**2
         print(f"{msg}: alloc={alloc:.1f} MB reserved={reserved:.1f} MB")
+
+    def free_ram(self):
+        gc.collect()
+        if sys.platform.startswith('linux'):
+            try:
+                ctypes.CDLL('libc.so.6').malloc_trim(0)
+            except Exception:
+                print("Failed to free RAM on Linux")
+                pass
+        elif sys.platform == 'win32':
+            try:
+                ctypes.cdll.msvcrt._heapmin()
+            except Exception:
+                print("Failed to free RAM on Windows")
+                pass
+            try:
+                ctypes.windll.kernel32.SetProcessWorkingSetSize(-1, -1)
+            except Exception:
+                print("Failed to free RAM on Windows")
+                pass
 
     def load(self, llm_model, flow_model, hift_model):
         self.vram("Start")
@@ -74,18 +101,21 @@ class CosyVoiceModel:
         self.loadLLM(llm_model)
         self.loadFlow(flow_model)
         self.loadHIFT(hift_model)
+        self.free_ram()
 
     def loadLLM(self, llm_model):
         self.llm.load_state_dict(torch.load(llm_model, map_location=self.device, weights_only=True), strict=True)
         self.vram("LLM state_dict loaded")
         self.llm.to(self.device).eval()
         self.vram(f"LLM moved to {self.device}")
+        print("load llm manual need to free ram manually, call free_ram() to free ram")
 
     def loadFlow(self, flow_model):
         self.flow.load_state_dict(torch.load(flow_model, map_location=self.device, weights_only=True), strict=True)
         self.vram("Flow state_dict loaded")
         self.flow.to(self.device).eval()
         self.vram(f"Flow moved to {self.device}")
+        print("load llm manual need to free ram manually, call free_ram() to free ram")
 
     def loadHIFT(self, hift_model):
         # in case hift_model is a hifigan model
@@ -94,7 +124,7 @@ class CosyVoiceModel:
         self.vram("HIFT state_dict loaded")
         self.hift.to(self.device).eval()
         self.vram(f"HIFT moved to {self.device}")
-        self.isHIFTLoaded = True
+        print("load llm manual need to free ram manually, call free_ram() to free ram")
 
     def clearCache(self):
         gc.collect()
@@ -305,12 +335,15 @@ class CosyVoice2Model(CosyVoiceModel):
                  llm: torch.nn.Module,
                  flow: torch.nn.Module,
                  hift: torch.nn.Module,
-                 fp16: bool = False):
+                 fp16: bool = False,
+                 debug: bool = False
+                 ):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.llm = llm
         self.flow = flow
         self.hift = hift
         self.fp16 = fp16
+        self.debug = debug
         # NOTE must matching training static_chunk_size
         self.token_hop_len = 25
         # NOTE increase token_hop_len incrementally to avoid duplicate inference
@@ -457,12 +490,15 @@ class CosyVoice3Model(CosyVoice2Model):
                  llm: torch.nn.Module,
                  flow: torch.nn.Module,
                  hift: torch.nn.Module,
-                 fp16: bool = False):
+                 fp16: bool = False,
+                 debug: bool = False
+                 ):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.llm = llm
         self.flow = flow
         self.hift = hift
         self.fp16 = fp16
+        self.debug = debug
         # NOTE must matching training static_chunk_size
         self.token_hop_len = 25
         # NOTE increase token_hop_len incrementally to avoid duplicate inference
