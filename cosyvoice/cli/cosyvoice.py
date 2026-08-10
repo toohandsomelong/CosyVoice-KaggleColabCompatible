@@ -221,18 +221,14 @@ class CosyVoice3(CosyVoice2):
         self.debug = debug
         self.model_dir = model_dir
         self.fp16 = fp16
-        self.print_ram("1")
         if not os.path.exists(model_dir):
             model_dir = snapshot_download(model_dir)
-        self.print_ram("2")
         hyper_yaml_path = '{}/cosyvoice3.yaml'.format(model_dir)
         if not os.path.exists(hyper_yaml_path):
             raise ValueError('{} not found!'.format(hyper_yaml_path))
-        self.print_ram("3")
         with open(hyper_yaml_path, 'r') as f:
             configs = load_hyperpyyaml(f, overrides={'qwen_pretrain_path': os.path.join(model_dir, 'CosyVoice-BlankEN')})
         assert get_model_type(configs) == CosyVoice3Model, 'do not use {} for CosyVoice3 initialization!'.format(model_dir)
-        self.print_ram("4")
         self.frontend = CosyVoiceFrontEnd(configs['get_tokenizer'],
                                           configs['feat_extractor'],
                                           '{}/campplus.onnx'.format(model_dir),
@@ -246,16 +242,14 @@ class CosyVoice3(CosyVoice2):
             load_trt, fp16 = False, False
             logging.warning('no cuda device, set load_trt/fp16 to False')
 
+        self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16, debug=self.debug)
         if(not manual_load):
-            self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16, debug=self.debug)
             self.model.load('{}/llm.pt'.format(model_dir),
                             '{}/flow.pt'.format(model_dir),
                             '{}/hift.pt'.format(model_dir))
         else:
             print("Manual load is enabled, please load the model manually using loadLLM, loadFlow and loadHIFT methods.")
-            self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16, debug=self.debug)
 
-        #ignore
         if load_vllm:
             self.model.load_vllm('{}/vllm'.format(model_dir))
         if load_trt:
@@ -275,24 +269,7 @@ class CosyVoice3(CosyVoice2):
         print(f"[RAM] {tag}: {ram:.3f} GB")
 
     def free_ram(self):
-        gc.collect()
-        if sys.platform.startswith('linux'):
-            try:
-                ctypes.CDLL('libc.so.6').malloc_trim(0)
-            except Exception:
-                print("Failed to free RAM on Linux")
-                pass
-        elif sys.platform == 'win32':
-            try:
-                ctypes.cdll.msvcrt._heapmin()
-            except Exception:
-                print("Failed to free RAM on Windows")
-                pass
-            try:
-                ctypes.windll.kernel32.SetProcessWorkingSetSize(-1, -1)
-            except Exception:
-                print("Failed to free RAM on Windows")
-                pass
+        self.model.free_ram()
 
 
 
