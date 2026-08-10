@@ -133,6 +133,7 @@ class CosyVoiceModel:
             torch.cuda.ipc_collect()
             torch.cuda.current_stream().synchronize()
 
+        self.free_ram()
         self.vram("Cache cleared")
 
     def llmToDevice(self, cpu = False):
