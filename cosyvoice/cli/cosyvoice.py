@@ -30,7 +30,7 @@ from cosyvoice.utils.class_utils import get_model_type
 
 class CosyVoice:
 
-    def __init__(self, model_dir, load_jit=False, load_trt=False, fp16=False, trt_concurrent=1):
+    def __init__(self, model_dir, load_jit=False, load_trt=False, fp16=False, load_frontend=True, trt_concurrent=1):
         self.model_dir = model_dir
         self.fp16 = fp16
         if not os.path.exists(model_dir):
@@ -48,6 +48,9 @@ class CosyVoice:
                                           '{}/spk2info.pt'.format(model_dir),
                                           configs['allowed_special'])
         self.sample_rate = configs['sample_rate']
+    
+        if load_frontend:
+            self.frontend.load_model()
 
         if torch.cuda.is_available() is False and (load_jit is True or load_trt is True or fp16 is True):
             load_jit, load_trt, fp16 = False, False, False
@@ -67,9 +70,6 @@ class CosyVoice:
                                 trt_concurrent,
                                 self.fp16)
         del configs
-
-    def load_frontend_model(self):
-        self.frontend.load_model()
 
     def list_available_spks(self):
         spks = list(self.frontend.spk2info.keys())
@@ -175,6 +175,9 @@ class CosyVoice:
     def hiftToDevice(self, cpu=False):
         self.model.hiftToDevice(cpu=cpu)
         logging.info('HIFT moved to {} successfully!'.format('cpu' if cpu else 'cuda'))
+
+    def load_frontend_model(self):
+        self.frontend.load_model()
 
 class CosyVoice2(CosyVoice):
 

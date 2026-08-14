@@ -35,16 +35,12 @@ class CosyVoiceFrontEnd:
                  campplus_model: str,
                  speech_tokenizer_model: str,
                  spk2info: str = '',
-                 load=True,
                  allowed_special: str = 'all'):
         self.tokenizer = get_tokenizer()
         self.feat_extractor = feat_extractor
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.load = load
         self.campplus_model = campplus_model
         self.speech_tokenizer_model = speech_tokenizer_model
-        if(self.load):
-            self.load_model()
         if os.path.exists(spk2info):
             self.spk2info = torch.load(spk2info, map_location=self.device, weights_only=True)
         else:
