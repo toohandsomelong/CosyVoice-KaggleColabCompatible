@@ -42,9 +42,11 @@ class CosyVoiceFrontEnd:
         option = onnxruntime.SessionOptions()
         option.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
         option.intra_op_num_threads = 1
-        self.campplus_session = onnxruntime.InferenceSession(campplus_model, sess_options=option, providers=["CPUExecutionProvider"])
-        self.speech_tokenizer_session = onnxruntime.InferenceSession(speech_tokenizer_model, sess_options=option,
-                                                                     providers=["CUDAExecutionProvider" if torch.cuda.is_available() else
+        self.has_prompt_cache = os.path.exists("asset/cache.pt")
+        if(not self.has_prompt_cache):
+            self.campplus_session = onnxruntime.InferenceSession(campplus_model, sess_options=option, providers=["CPUExecutionProvider"])
+            self.speech_tokenizer_session = onnxruntime.InferenceSession(speech_tokenizer_model, sess_options=option,
+                                                                        providers=["CUDAExecutionProvider" if torch.cuda.is_available() else
                                                                                 "CPUExecutionProvider"])
         if os.path.exists(spk2info):
             self.spk2info = torch.load(spk2info, map_location=self.device, weights_only=True)
@@ -165,31 +167,61 @@ class CosyVoiceFrontEnd:
         model_input = {'text': tts_text_token, 'text_len': tts_text_token_len, 'llm_embedding': embedding, 'flow_embedding': embedding}
         return model_input
 
-    def frontend_zero_shot(self, tts_text, prompt_text, prompt_wav, resample_rate, zero_shot_spk_id):
+    def frontend_zero_shot(self, tts_text, prompt_text, prompt_wav, resample_rate, zero_shot_spk_id, is_fixed_wav=False):
         tts_text_token, tts_text_token_len = self._extract_text_token(tts_text)
         if zero_shot_spk_id == '':
-            prompt_text_token, prompt_text_token_len = self._extract_text_token(prompt_text)
-            speech_feat, speech_feat_len = self._extract_speech_feat(prompt_wav)
-            speech_token, speech_token_len = self._extract_speech_token(prompt_wav)
-            if resample_rate == 24000:
-                # cosyvoice2, force speech_feat % speech_token = 2
-                token_len = min(int(speech_feat.shape[1] / 2), speech_token.shape[1])
-                speech_feat, speech_feat_len[:] = speech_feat[:, :2 * token_len], 2 * token_len
-                speech_token, speech_token_len[:] = speech_token[:, :token_len], token_len
-            embedding = self._extract_spk_embedding(prompt_wav)
-            model_input = {'prompt_text': prompt_text_token, 'prompt_text_len': prompt_text_token_len,
-                           'llm_prompt_speech_token': speech_token, 'llm_prompt_speech_token_len': speech_token_len,
+            prompt_text_token, prompt_text_token_len = self._extract_text_token(prompt_text) #no need
+
+            if(self.has_prompt_cache):
+                cached_data = torch.load(
+                                            "asset/cache.pt",
+                                            map_location="cpu",
+                                            weights_only=True
+                                        )
+                speech_feat = cached_data["speech_feat"].to(self.device)
+                speech_feat_len = cached_data["speech_feat_len"].to(self.device)
+                speech_token = cached_data["speech_token"].to(self.device)
+                speech_token_len = cached_data["speech_token_len"].to(self.device)
+                embedding = cached_data["embedding"].to(self.device)
+            else:
+                speech_feat, speech_feat_len = self._extract_speech_feat(prompt_wav)
+                speech_token, speech_token_len = self._extract_speech_token(prompt_wav)
+                embedding = self._extract_spk_embedding(prompt_wav)
+
+                #cosyvoice3 fixed sample rate 24000
+                if resample_rate == 24000:
+                    # cosyvoice2, force speech_feat % speech_token = 2
+                    token_len = min(int(speech_feat.shape[1] / 2), speech_token.shape[1])
+                    speech_feat, speech_feat_len[:] = speech_feat[:, :2 * token_len], 2 * token_len
+                    speech_token, speech_token_len[:] = speech_token[:, :token_len], token_len
+
+            model_input = {'prompt_text': prompt_text_token, 'prompt_text_len': prompt_text_token_len, #no need
+                           'llm_prompt_speech_token': speech_token, 'llm_prompt_speech_token_len': speech_token_len, #no need
                            'flow_prompt_speech_token': speech_token, 'flow_prompt_speech_token_len': speech_token_len,
                            'prompt_speech_feat': speech_feat, 'prompt_speech_feat_len': speech_feat_len,
                            'llm_embedding': embedding, 'flow_embedding': embedding}
         else:
             model_input = {**self.spk2info[zero_shot_spk_id]}
+            
         model_input['text'] = tts_text_token
         model_input['text_len'] = tts_text_token_len
+
+        if is_fixed_wav is True:
+            #save speech_feat, speech_feat_len, speech_token, speech_token_len and embedding to file 
+            # because cross lingual i use will fixed prompt_wav
+            print("saved prompt_wav speech_feat, speech_feat_len, speech_token, speech_token_len and embedding to asset/cache.pt")
+            torch.save({
+                            "speech_feat": speech_feat.cpu(),
+                            "speech_feat_len": speech_feat_len.cpu(),
+                            "speech_token": speech_token.cpu(),
+                            "speech_token_len": speech_token_len.cpu(),
+                            "embedding": embedding.cpu(),
+                        }, "asset/cache.pt")
+
         return model_input
 
-    def frontend_cross_lingual(self, tts_text, prompt_wav, resample_rate, zero_shot_spk_id):
-        model_input = self.frontend_zero_shot(tts_text, '', prompt_wav, resample_rate, zero_shot_spk_id)
+    def frontend_cross_lingual(self, tts_text, prompt_wav, resample_rate, zero_shot_spk_id, is_fixed_wav=False):
+        model_input = self.frontend_zero_shot(tts_text, '', prompt_wav, resample_rate, zero_shot_spk_id, is_fixed_wav=is_fixed_wav)
         # in cross lingual mode, we remove prompt in llm
         del model_input['prompt_text']
         del model_input['prompt_text_len']
