@@ -91,7 +91,9 @@ class CosyVoice:
         self.frontend.spk2info[spk_id] = model_input
         return True
 
-    def save_spkinfo(self):
+    def save_spkinfo(self, path=None):
+        if path is not None:
+            torch.save(self.frontend.spk2info, path)
         torch.save(self.frontend.spk2info, '{}/spk2info.pt'.format(self.model_dir))
 
     def inference_sft(self, tts_text, spk_id, stream=False, speed=1.0, text_frontend=True):
