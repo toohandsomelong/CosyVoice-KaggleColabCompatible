@@ -11,6 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import gc
+import sys
+import ctypes
 import os
 import time
 from typing import Generator
@@ -18,6 +21,7 @@ from tqdm import tqdm
 from hyperpyyaml import load_hyperpyyaml
 from modelscope import snapshot_download
 import torch
+import psutil
 from cosyvoice.cli.frontend import CosyVoiceFrontEnd
 from cosyvoice.cli.model import CosyVoiceModel, CosyVoice2Model, CosyVoice3Model
 from cosyvoice.utils.file_utils import logging
@@ -44,9 +48,11 @@ class CosyVoice:
                                           '{}/spk2info.pt'.format(model_dir),
                                           configs['allowed_special'])
         self.sample_rate = configs['sample_rate']
+
         if torch.cuda.is_available() is False and (load_jit is True or load_trt is True or fp16 is True):
             load_jit, load_trt, fp16 = False, False, False
             logging.warning('no cuda device, set load_jit/load_trt/fp16 to False')
+
         self.model = CosyVoiceModel(configs['llm'], configs['flow'], configs['hift'], fp16)
         self.model.load('{}/llm.pt'.format(model_dir),
                         '{}/flow.pt'.format(model_dir),
@@ -146,6 +152,29 @@ class CosyVoice:
             yield model_output
             start_time = time.time()
 
+    def loadLLM(self):
+        self.model.loadLLM('{}/llm.pt'.format(self.model_dir))
+        logging.info('LLM loaded successfully!')
+
+    def loadFlow(self):
+        self.model.loadFlow('{}/flow.pt'.format(self.model_dir))
+        logging.info('Flow loaded successfully!')
+
+    def loadHIFT(self):
+        self.model.loadHIFT('{}/hift.pt'.format(self.model_dir))
+        logging.info('HIFT loaded successfully!')
+
+    def llmToDevice(self, cpu=False):
+        self.model.llmToDevice(cpu=cpu)
+        logging.info('LLM moved to {} successfully!'.format('cpu' if cpu else 'cuda'))
+
+    def flowToDevice(self, cpu=False):
+        self.model.flowToDevice(cpu=cpu)
+        logging.info('Flow moved to {} successfully!'.format('cpu' if cpu else 'cuda'))
+
+    def hiftToDevice(self, cpu=False):
+        self.model.hiftToDevice(cpu=cpu)
+        logging.info('HIFT moved to {} successfully!'.format('cpu' if cpu else 'cuda'))
 
 class CosyVoice2(CosyVoice):
 
@@ -199,7 +228,8 @@ class CosyVoice2(CosyVoice):
 
 class CosyVoice3(CosyVoice2):
 
-    def __init__(self, model_dir, load_trt=False, load_vllm=False, fp16=False, trt_concurrent=1):
+    def __init__(self, model_dir, manual_load=False, load_trt=False, load_vllm=False, fp16=False, trt_concurrent=1, debug = False):
+        self.debug = debug
         self.model_dir = model_dir
         self.fp16 = fp16
         if not os.path.exists(model_dir):
@@ -217,13 +247,20 @@ class CosyVoice3(CosyVoice2):
                                           '{}/spk2info.pt'.format(model_dir),
                                           configs['allowed_special'])
         self.sample_rate = configs['sample_rate']
+        
+        #check cuda device and set load_jit/load_trt/fp16 to False if no cuda device
         if torch.cuda.is_available() is False and (load_trt is True or fp16 is True):
             load_trt, fp16 = False, False
             logging.warning('no cuda device, set load_trt/fp16 to False')
-        self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16)
-        self.model.load('{}/llm.pt'.format(model_dir),
-                        '{}/flow.pt'.format(model_dir),
-                        '{}/hift.pt'.format(model_dir))
+
+        self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16, debug=self.debug)
+        if(not manual_load):
+            self.model.load('{}/llm.pt'.format(model_dir),
+                            '{}/flow.pt'.format(model_dir),
+                            '{}/hift.pt'.format(model_dir))
+        else:
+            print("Manual load is enabled, please load the model manually using loadLLM, loadFlow and loadHIFT methods.")
+
         if load_vllm:
             self.model.load_vllm('{}/vllm'.format(model_dir))
         if load_trt:
@@ -234,6 +271,17 @@ class CosyVoice3(CosyVoice2):
                                 trt_concurrent,
                                 self.fp16)
         del configs
+    
+    def print_ram(self, tag):
+        if(not self.debug):
+            return
+        process = psutil.Process(os.getpid())
+        ram = process.memory_info().rss / 1024**3
+        print(f"[RAM] {tag}: {ram:.3f} GB")
+
+    def free_ram(self):
+        self.model.free_ram()
+
 
 
 def AutoModel(**kwargs):
