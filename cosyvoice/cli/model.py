@@ -25,7 +25,7 @@ from torch.nn import functional as F
 from contextlib import nullcontext
 import uuid
 from cosyvoice.utils.common import fade_in_out
-from cosyvoice.utils.file_utils import convert_onnx_to_trt, export_cosyvoice2_vllm
+from cosyvoice.utils.file_utils import convert_onnx_to_trt, export_cosyvoice2_vllm, require_tensorrt
 from cosyvoice.utils.common import TrtContextWrapper
 
 
@@ -176,7 +176,7 @@ class CosyVoiceModel:
         if not os.path.exists(flow_decoder_estimator_model) or os.path.getsize(flow_decoder_estimator_model) == 0:
             convert_onnx_to_trt(flow_decoder_estimator_model, self.get_trt_kwargs(), flow_decoder_onnx_model, fp16)
         del self.flow.decoder.estimator
-        import tensorrt as trt
+        trt = require_tensorrt()
         with open(flow_decoder_estimator_model, 'rb') as f:
             estimator_engine = trt.Runtime(trt.Logger(trt.Logger.INFO)).deserialize_cuda_engine(f.read())
         assert estimator_engine is not None, 'failed to load trt {}'.format(flow_decoder_estimator_model)

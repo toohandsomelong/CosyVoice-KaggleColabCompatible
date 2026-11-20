@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# optional TensorRT acceleration (Linux x86_64 only)
+tensorrt-cu12==10.13.3.9; sys_platform == 'linux'
+tensorrt-cu12-bindings==10.13.3.9; sys_platform == 'linux'
+tensorrt-cu12-libs==10.13.3.9; sys_platform == 'linux'
