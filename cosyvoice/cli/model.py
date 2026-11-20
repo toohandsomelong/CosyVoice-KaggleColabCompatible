@@ -80,19 +80,22 @@ class CosyVoiceModel:
         if sys.platform.startswith('linux'):
             try:
                 ctypes.CDLL('libc.so.6').malloc_trim(0)
-            except Exception:
+            except Exception as e:
                 print("Failed to free RAM on Linux")
+                print(f"Reason: {e}")
                 pass
         elif sys.platform == 'win32':
             try:
                 ctypes.cdll.msvcrt._heapmin()
-            except Exception:
+            except Exception as e:
                 print("Failed to free RAM on Windows")
+                print(f"Reason: {e}")
                 pass
             try:
                 ctypes.windll.kernel32.SetProcessWorkingSetSize(-1, -1)
-            except Exception:
+            except Exception as e:
                 print("Failed to free RAM on Windows")
+                print(f"Reason: {e}")
                 pass
 
     def load(self, llm_model, flow_model, hift_model):

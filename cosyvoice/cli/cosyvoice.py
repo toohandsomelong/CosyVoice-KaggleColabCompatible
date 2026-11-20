@@ -17,6 +17,7 @@ import ctypes
 import os
 import time
 from typing import Generator
+import warnings
 from tqdm import tqdm
 from hyperpyyaml import load_hyperpyyaml
 from modelscope import snapshot_download
@@ -27,6 +28,7 @@ from cosyvoice.cli.model import CosyVoiceModel, CosyVoice2Model, CosyVoice3Model
 from cosyvoice.utils.file_utils import logging
 from cosyvoice.utils.class_utils import get_model_type
 
+warnings.filterwarnings("ignore", category=ImportWarning)
 
 class CosyVoice:
 
@@ -122,6 +124,18 @@ class CosyVoice:
                 start_time = time.time()
 
     def inference_cross_lingual(self, tts_text, prompt_wav, spk_id='', stream=False, speed=1.0, text_frontend=True):
+        #if using spk_id, make sure disable load_frontend when initializing Cosyvoice to save memory
+        #create spk_id using add_cross_lingual_spk first
+        #then save spkinfo using save_spkinfo (path is optional, default is model_dir/spk2info.pt)
+        #when initializing Cosyvoice next time, set spk2infoPath to the saved spk2info.pt path
+        #when using spk_id, no need prompt_wav
+        #example:
+        ## cosyvoice = CosyVoice(model_dir)
+        ## cosyvoice.add_cross_lingual_spk(prompt_wav, spk_id)
+        ## cosyvoice.save_spkinfo(path)
+        ## cosyvoice = CosyVoice(model_dir, load_frontend=False, spk2infoPath=path)
+        ## for model_output in cosyvoice.inference_cross_lingual(tts_text, prompt_wav, spk_id=spk_id):
+        ##    ##     tts_speech = model_output['tts_speech']
         for i in tqdm(self.frontend.text_normalize(tts_text, split=True, text_frontend=text_frontend)):
             model_input = self.frontend.frontend_cross_lingual(i, prompt_wav, self.sample_rate, spk_id)
             start_time = time.time()
