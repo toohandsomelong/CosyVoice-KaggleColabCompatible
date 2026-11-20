@@ -105,7 +105,15 @@ https://www.kaggle.com/code/handsomelong/run-cosyvoice3-kagglecolab
     ``` sh
     conda create -n cosyvoice -y python=3.10
     conda activate cosyvoice
+
+    # inference only (default)
     pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host=mirrors.aliyun.com
+
+    # optional: training dependencies (deepspeed, tensorboard)
+    # pip install -r requirements-train.txt -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host=mirrors.aliyun.com
+
+    # optional: TensorRT acceleration (Linux x86_64 only)
+    # pip install -r requirements-tensorrt.txt -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host=mirrors.aliyun.com
 
     # If you encounter sox compatibility issues
     # ubuntu
@@ -113,6 +121,10 @@ https://www.kaggle.com/code/handsomelong/run-cosyvoice3-kagglecolab
     # centos
     sudo yum install sox sox-devel
     ```
+
+    `requirements.txt` covers inference only. If you call `load_trt=True` without
+    installing `requirements-tensorrt.txt`, CosyVoice will raise an error with the
+    command to install it.
 
 ### Model download
 

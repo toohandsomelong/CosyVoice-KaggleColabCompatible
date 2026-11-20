@@ -50,8 +50,21 @@ def load_wav(wav, target_sr, min_sr=16000):
     return speech
 
 
+def require_tensorrt():
+    try:
+        import tensorrt as trt
+        return trt
+    except ImportError as e:
+        logging.error("TensorRT is not installed. It is optional and only needed for "
+                      "load_trt / TensorRT acceleration.\n"
+                      "Install it with: pip install -r requirements-tensorrt.txt\n"
+                      "Note: tensorrt-cu12 wheels are Linux x86_64 only.")
+        raise ImportError("tensorrt is required for TensorRT acceleration; "
+                          "install it with `pip install -r requirements-tensorrt.txt`") from e
+
+
 def convert_onnx_to_trt(trt_model, trt_kwargs, onnx_model, fp16):
-    import tensorrt as trt
+    trt = require_tensorrt()
     logging.info("Converting onnx to trt...")
     network_flags = 1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
     logger = trt.Logger(trt.Logger.INFO)
