@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# training-only dependencies
+deepspeed>=0.15.1; sys_platform == 'linux'
+tensorboard>=2.14.0

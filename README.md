@@ -1,6 +1,10 @@
 # Note:
-- this will make webui.py not work
-- this repo only use for Kaggle and Colab
+- this repo only works for Kaggle and Colab; `webui.py` will not work
+- inference only: `pip install -r requirements.txt`
+- training: `pip install -r requirements-train.txt`
+- optional TensorRT (Linux x86_64 only): `pip install -r requirements-tensorrt.txt`
+    - only needed for `load_trt=True`; otherwise CosyVoice raises an install hint
+
 # **TUTORIAL VIA KAGGLE**:
 https://www.kaggle.com/code/handsomelong/run-cosyvoice3-kagglecolab
 
