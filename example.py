@@ -102,10 +102,27 @@ def cosyvoice3_example():
         torchaudio.save('japanese_{}.wav'.format(i), j['tts_speech'], cosyvoice.sample_rate)
 
 
+def cosyvoice3_manual_load_example():
+    """ CosyVoice3 staged loading with split configs.
+    This lets you load only the LLM first, then flow+hift later, which lowers peak RAM.
+    """
+    cosyvoice = AutoModel(model_dir='pretrained_models/Fun-CosyVoice3-0.5B', manual_load=True)
+    # load only the LLM
+    cosyvoice.loadLLM()
+    # load flow and hift together from one file
+    cosyvoice.loadFlowHIFT()
+
+    for i, j in enumerate(cosyvoice.inference_zero_shot('八百标兵奔北坡，北坡炮兵并排跑，炮兵怕把标兵碰，标兵怕碰炮兵炮。',
+                                                         'You are a helpful assistant.<|endofprompt|>希望你以后能够做的比我还好呦。',
+                                                         './asset/zero_shot_prompt.wav', stream=False)):
+        torchaudio.save('manual_zero_shot_{}.wav'.format(i), j['tts_speech'], cosyvoice.sample_rate)
+
+
 def main():
     # cosyvoice_example()
     # cosyvoice2_example()
     cosyvoice3_example()
+    # cosyvoice3_manual_load_example()
 
 
 if __name__ == '__main__':

@@ -247,52 +247,155 @@ class CosyVoice2(CosyVoice):
 
 class CosyVoice3(CosyVoice2):
 
-    def __init__(self, model_dir, manual_load=False, load_trt=False, load_vllm=False, fp16=False, trt_concurrent=1, debug = False):
+    def __init__(self, model_dir, manual_load=False, load_trt=False, load_vllm=False, fp16=False, trt_concurrent=1, debug=False, config_dir=None):
         self.debug = debug
         self.model_dir = model_dir
         self.fp16 = fp16
         if not os.path.exists(model_dir):
             model_dir = snapshot_download(model_dir)
-        hyper_yaml_path = '{}/cosyvoice3.yaml'.format(model_dir)
-        if not os.path.exists(hyper_yaml_path):
-            raise ValueError('{} not found!'.format(hyper_yaml_path))
-        with open(hyper_yaml_path, 'r') as f:
-            configs = load_hyperpyyaml(f, overrides={'qwen_pretrain_path': os.path.join(model_dir, 'CosyVoice-BlankEN')})
-        assert get_model_type(configs) == CosyVoice3Model, 'do not use {} for CosyVoice3 initialization!'.format(model_dir)
-        self.frontend = CosyVoiceFrontEnd(configs['get_tokenizer'],
-                                          configs['feat_extractor'],
-                                          '{}/campplus.onnx'.format(model_dir),
-                                          '{}/speech_tokenizer_v3.onnx'.format(model_dir),
-                                          '{}/spk2info.pt'.format(model_dir),
-                                          configs['allowed_special'])
-        self.sample_rate = configs['sample_rate']
-        
-        #check cuda device and set load_jit/load_trt/fp16 to False if no cuda device
-        if torch.cuda.is_available() is False and (load_trt is True or fp16 is True):
-            load_trt, fp16 = False, False
-            logging.warning('no cuda device, set load_trt/fp16 to False')
+        self.model_dir = model_dir
 
-        self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16, debug=self.debug)
-        if(not manual_load):
-            self.model.load('{}/llm.pt'.format(model_dir),
-                            '{}/flow.pt'.format(model_dir),
-                            '{}/hift.pt'.format(model_dir))
+        # Prefer split configs if they exist; otherwise fall back to single cosyvoice3.yaml
+        self.config_dir = self._resolve_config_dir(config_dir)
+        self.use_split_config = self.config_dir is not None
+
+        if self.use_split_config:
+            with open(os.path.join(self.config_dir, 'common.yaml'), 'r') as f:
+                common_configs = load_hyperpyyaml(f, overrides={'qwen_pretrain_path': os.path.join(model_dir, 'CosyVoice-BlankEN')})
+            self.frontend = CosyVoiceFrontEnd(common_configs['get_tokenizer'],
+                                              common_configs['feat_extractor'],
+                                              '{}/campplus.onnx'.format(model_dir),
+                                              '{}/speech_tokenizer_v3.onnx'.format(model_dir),
+                                              '{}/spk2info.pt'.format(model_dir),
+                                              common_configs['allowed_special'])
+            self.sample_rate = common_configs['sample_rate']
+
+            # check cuda device and set load_trt/fp16 to False if no cuda device
+            if torch.cuda.is_available() is False and (load_trt is True or fp16 is True):
+                load_trt, fp16 = False, False
+                logging.warning('no cuda device, set load_trt/fp16 to False')
+
+            if not manual_load:
+                configs = self._load_split_components()
+                assert get_model_type(configs) == CosyVoice3Model, 'do not use {} for CosyVoice3 initialization!'.format(model_dir)
+                self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16, debug=self.debug)
+                self.model.load('{}/llm.pt'.format(model_dir),
+                                '{}/flow.pt'.format(model_dir),
+                                '{}/hift.pt'.format(model_dir))
+            else:
+                self.model = CosyVoice3Model(None, None, None, fp16, debug=self.debug)
+                print("Manual load is enabled, please load the model manually using loadLLM, loadFlow/loadHIFT or loadFlowHIFT methods.")
+
+            del common_configs
         else:
-            print("Manual load is enabled, please load the model manually using loadLLM, loadFlow and loadHIFT methods.")
+            hyper_yaml_path = '{}/cosyvoice3.yaml'.format(model_dir)
+            if not os.path.exists(hyper_yaml_path):
+                raise ValueError('{} not found!'.format(hyper_yaml_path))
+            with open(hyper_yaml_path, 'r') as f:
+                configs = load_hyperpyyaml(f, overrides={'qwen_pretrain_path': os.path.join(model_dir, 'CosyVoice-BlankEN')})
+            assert get_model_type(configs) == CosyVoice3Model, 'do not use {} for CosyVoice3 initialization!'.format(model_dir)
+            self.frontend = CosyVoiceFrontEnd(configs['get_tokenizer'],
+                                              configs['feat_extractor'],
+                                              '{}/campplus.onnx'.format(model_dir),
+                                              '{}/speech_tokenizer_v3.onnx'.format(model_dir),
+                                              '{}/spk2info.pt'.format(model_dir),
+                                              configs['allowed_special'])
+            self.sample_rate = configs['sample_rate']
 
-        if load_vllm:
+            # check cuda device and set load_trt/fp16 to False if no cuda device
+            if torch.cuda.is_available() is False and (load_trt is True or fp16 is True):
+                load_trt, fp16 = False, False
+                logging.warning('no cuda device, set load_trt/fp16 to False')
+
+            self.model = CosyVoice3Model(configs['llm'], configs['flow'], configs['hift'], fp16, debug=self.debug)
+            if not manual_load:
+                self.model.load('{}/llm.pt'.format(model_dir),
+                                '{}/flow.pt'.format(model_dir),
+                                '{}/hift.pt'.format(model_dir))
+            else:
+                print("Manual load is enabled, please load the model manually using loadLLM, loadFlow and loadHIFT methods.")
+
+        if load_vllm and not (self.use_split_config and manual_load):
             self.model.load_vllm('{}/vllm'.format(model_dir))
-        if load_trt:
+        if load_trt and not (self.use_split_config and manual_load):
             if self.fp16 is True:
                 logging.warning('DiT tensorRT fp16 engine have some performance issue, use at caution!')
             self.model.load_trt('{}/flow.decoder.estimator.{}.mygpu.plan'.format(model_dir, 'fp16' if self.fp16 is True else 'fp32'),
                                 '{}/flow.decoder.estimator.fp32.onnx'.format(model_dir),
                                 trt_concurrent,
                                 self.fp16)
-        del configs
-    
+        if not self.use_split_config:
+            del configs
+
+    def _resolve_config_dir(self, config_dir):
+        if config_dir is not None:
+            if os.path.exists(os.path.join(config_dir, 'common.yaml')):
+                return config_dir
+            return None
+        default_config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'configs', 'cosyvoice3')
+        if os.path.exists(os.path.join(default_config_dir, 'common.yaml')):
+            return default_config_dir
+        return None
+
+    def _load_split_components(self):
+        configs = {}
+        configs.update(self._load_split_yaml('llm.yaml'))
+        configs.update(self._load_split_yaml('flow_hift.yaml'))
+        return configs
+
+    def _load_split_yaml(self, name, component_overrides=None):
+        overrides = {'qwen_pretrain_path': os.path.join(self.model_dir, 'CosyVoice-BlankEN')}
+        if component_overrides is not None:
+            overrides.update(component_overrides)
+        with open(os.path.join(self.config_dir, name), 'r') as f:
+            return load_hyperpyyaml(f, overrides=overrides)
+
+    def loadLLM(self):
+        if not self.use_split_config:
+            super().loadLLM()
+            return
+        if self.model.llm is None:
+            cfg = self._load_split_yaml('llm.yaml')
+            self.model.llm = cfg['llm']
+        self.model.loadLLM('{}/llm.pt'.format(self.model_dir))
+        logging.info('LLM loaded successfully!')
+
+    def loadFlow(self):
+        if not self.use_split_config:
+            super().loadFlow()
+            return
+        if self.model.flow is None:
+            cfg = self._load_split_yaml('flow_hift.yaml', component_overrides={'hift': None})
+            self.model.flow = cfg['flow']
+        self.model.loadFlow('{}/flow.pt'.format(self.model_dir))
+        logging.info('Flow loaded successfully!')
+
+    def loadHIFT(self):
+        if not self.use_split_config:
+            super().loadHIFT()
+            return
+        if self.model.hift is None:
+            cfg = self._load_split_yaml('flow_hift.yaml', component_overrides={'flow': None})
+            self.model.hift = cfg['hift']
+        self.model.loadHIFT('{}/hift.pt'.format(self.model_dir))
+        logging.info('HIFT loaded successfully!')
+
+    def loadFlowHIFT(self):
+        if not self.use_split_config:
+            self.loadFlow()
+            self.loadHIFT()
+            return
+        cfg = self._load_split_yaml('flow_hift.yaml')
+        if self.model.flow is None:
+            self.model.flow = cfg['flow']
+        if self.model.hift is None:
+            self.model.hift = cfg['hift']
+        self.model.loadFlow('{}/flow.pt'.format(self.model_dir))
+        self.model.loadHIFT('{}/hift.pt'.format(self.model_dir))
+        logging.info('Flow and HIFT loaded successfully!')
+
     def print_ram(self, tag):
-        if(not self.debug):
+        if not self.debug:
             return
         process = psutil.Process(os.getpid())
         ram = process.memory_info().rss / 1024**3
